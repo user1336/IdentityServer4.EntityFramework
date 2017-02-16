@@ -2,7 +2,6 @@
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
 
-using System;
 using System.Linq;
 using System.Threading.Tasks;
 using IdentityServer4.EntityFramework.Interfaces;
@@ -10,26 +9,26 @@ using IdentityServer4.EntityFramework.Mappers;
 using IdentityServer4.Models;
 using IdentityServer4.Stores;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace IdentityServer4.EntityFramework.Stores
 {
     public class ClientStore : IClientStore
     {
-        private readonly IConfigurationDbContext _context;
         private readonly ILogger<ClientStore> _logger;
 
-        public ClientStore(IConfigurationDbContext context, ILogger<ClientStore> logger)
+        public ClientStore(IServiceScopeFactory scopeFactory, ILogger<ClientStore> logger)
         {
-            if (context == null) throw new ArgumentNullException(nameof(context));
-
-            _context = context;
+            Context = scopeFactory.CreateScope().ServiceProvider.GetService<IConfigurationDbContext>();
             _logger = logger;
         }
 
+        private IConfigurationDbContext Context { get; }
+
         public Task<Client> FindClientByIdAsync(string clientId)
         {
-            var client = _context.Clients
+            var client = Context.Clients
                 .Include(x => x.AllowedGrantTypes)
                 .Include(x => x.RedirectUris)
                 .Include(x => x.PostLogoutRedirectUris)
@@ -39,6 +38,7 @@ namespace IdentityServer4.EntityFramework.Stores
                 .Include(x => x.IdentityProviderRestrictions)
                 .Include(x => x.AllowedCorsOrigins)
                 .FirstOrDefault(x => x.ClientId == clientId);
+
             var model = client?.ToModel();
 
             _logger.LogDebug("{clientId} found in database: {clientIdFound}", clientId, model != null);

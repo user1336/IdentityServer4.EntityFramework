@@ -2,7 +2,6 @@
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -11,34 +10,34 @@ using IdentityServer4.EntityFramework.Mappers;
 using IdentityServer4.Models;
 using IdentityServer4.Stores;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace IdentityServer4.EntityFramework.Stores
 {
     public class ResourceStore : IResourceStore
     {
-        private readonly IConfigurationDbContext _context;
         private readonly ILogger<ResourceStore> _logger;
 
-        public ResourceStore(IConfigurationDbContext context, ILogger<ResourceStore> logger)
+        public ResourceStore(IServiceScopeFactory scopeFactory, ILogger<ResourceStore> logger)
         {
-            if (context == null) throw new ArgumentNullException(nameof(context));
-
-            _context = context;
+            Context = scopeFactory.CreateScope().ServiceProvider.GetService<IConfigurationDbContext>();
             _logger = logger;
         }
+
+        private IConfigurationDbContext Context { get; }
 
         public Task<ApiResource> FindApiResourceAsync(string name)
         {
             var query =
-                from apiResource in _context.ApiResources
+                from apiResource in Context.ApiResources
                 where apiResource.Name == name
                 select apiResource;
 
             var apis = query
                 .Include(x => x.Secrets)
                 .Include(x => x.Scopes)
-                    .ThenInclude(s => s.UserClaims)
+                .ThenInclude(s => s.UserClaims)
                 .Include(x => x.UserClaims);
 
             var api = apis.FirstOrDefault();
@@ -60,14 +59,14 @@ namespace IdentityServer4.EntityFramework.Stores
             var names = scopeNames.ToArray();
 
             var query =
-                from api in _context.ApiResources
-                where api.Scopes.Where(x=>names.Contains(x.Name)).Any()
+                from api in Context.ApiResources
+                where api.Scopes.Any(x => names.Contains(x.Name))
                 select api;
 
             var apis = query
                 .Include(x => x.Secrets)
                 .Include(x => x.Scopes)
-                    .ThenInclude(s => s.UserClaims)
+                .ThenInclude(s => s.UserClaims)
                 .Include(x => x.UserClaims);
 
             var results = apis.ToArray();
@@ -83,7 +82,7 @@ namespace IdentityServer4.EntityFramework.Stores
             var scopes = scopeNames.ToArray();
 
             var query =
-                from identityResource in _context.IdentityResources
+                from identityResource in Context.IdentityResources
                 where scopes.Contains(identityResource.Name)
                 select identityResource;
 
@@ -99,20 +98,20 @@ namespace IdentityServer4.EntityFramework.Stores
 
         public Task<Resources> GetAllResources()
         {
-            var identity = _context.IdentityResources
-              .Include(x => x.UserClaims);
+            var identity = Context.IdentityResources
+                .Include(x => x.UserClaims);
 
-            var apis = _context.ApiResources
+            var apis = Context.ApiResources
                 .Include(x => x.Secrets)
                 .Include(x => x.Scopes)
-                    .ThenInclude(s => s.UserClaims)
+                .ThenInclude(s => s.UserClaims)
                 .Include(x => x.UserClaims);
 
             var result = new Resources(
                 identity.ToArray().Select(x => x.ToModel()).AsEnumerable(),
                 apis.ToArray().Select(x => x.ToModel()).AsEnumerable());
 
-            _logger.LogDebug("Found {scopes} as all scopes in database", result.IdentityResources.Select(x=>x.Name).Union(result.ApiResources.SelectMany(x=>x.Scopes).Select(x=>x.Name)));
+            _logger.LogDebug("Found {scopes} as all scopes in database", result.IdentityResources.Select(x => x.Name) .Union(result.ApiResources.SelectMany(x => x.Scopes).Select(x => x.Name)));
 
             return Task.FromResult(result);
         }
